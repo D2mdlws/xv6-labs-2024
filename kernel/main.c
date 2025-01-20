@@ -28,13 +28,13 @@ main()
     iinit();         // inode table
     fileinit();      // file table
     virtio_disk_init(); // emulated hard disk
-    userinit();      // first user process
-    __sync_synchronize();
+    userinit();      // first user process, after set up the first process, the kernel will start the scheduler
+    __sync_synchronize(); // compilor magic, make sure everything above must be done before change the started into 1
     started = 1;
   } else {
     while(started == 0)
       ;
-    __sync_synchronize();
+    __sync_synchronize(); // also, tell the compilor do the below functions only after the while loop ends
     printf("hart %d starting\n", cpuid());
     kvminithart();    // turn on paging
     trapinithart();   // install kernel trap vector

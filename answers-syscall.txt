@@ -1,0 +1,6 @@
+usertrap()
+p->trapframe->a7 = 0x7
+usermode
+lw	a3,0(zero) a3 corresponds to num
+load page fault, since virtual addr 0 is not mapped
+name was initcode, pid was 1
