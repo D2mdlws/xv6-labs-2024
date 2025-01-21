@@ -9,6 +9,8 @@
 #include "riscv.h"
 #include "defs.h"
 
+#define SPGSIZE ((512)*PGSIZE)
+
 void freerange(void *pa_start, void *pa_end);
 
 extern char end[]; // first address after kernel.
@@ -23,10 +25,16 @@ struct {
   struct run *freelist;
 } kmem;
 
+struct {
+  struct spinlock lock;
+  struct run *freelist;
+} superkmem;
+
 void
 kinit()
 {
   initlock(&kmem.lock, "kmem");
+  initlock(&superkmem.lock, "superkmem");
   freerange(end, (void*)PHYSTOP);
 }
 
@@ -35,8 +43,29 @@ freerange(void *pa_start, void *pa_end)
 {
   char *p;
   p = (char*)PGROUNDUP((uint64)pa_start);
-  for(; p + PGSIZE <= (char*)pa_end; p += PGSIZE)
+  for(; p + PGSIZE <= (char*)pa_end - 25 * SPGSIZE; p += PGSIZE)  //25 Super Pages maybe enough?
     kfree(p);
+  p = (char*)SUPERPGROUNDUP((uint64)pa_start);
+  for (; p + SPGSIZE <= (char*)pa_end; p += SPGSIZE)
+    superfree(p);
+}
+
+void
+superfree(void* pa)
+{
+  struct run * r;
+
+  if (((uint64)pa % SPGSIZE) != 0 || (char*)pa < end || (uint64)pa >= PHYSTOP)
+    panic("superkfree");
+
+  memset(pa, 1, SPGSIZE);
+
+  r = (struct run*)pa;
+
+  acquire(&superkmem.lock);
+  r->next = superkmem.freelist;
+  superkmem.freelist = r;
+  release(&superkmem.lock);
 }
 
 // Free the page of physical memory pointed at by pa,
@@ -84,11 +113,15 @@ kalloc(void)
 void*
 superalloc(void)
 {
+  struct run *r;
 
-}
+  acquire(&superkmem.lock);
+  r = superkmem.freelist;
+  if(r)
+    superkmem.freelist = r->next;
+  release(&superkmem.lock);
 
-void*
-superfree(void) 
-{
-
+  if(r)
+    memset((char*)r, 5, SPGSIZE); // fill with junk
+  return (void*)r;
 }

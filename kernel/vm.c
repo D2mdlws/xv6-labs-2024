@@ -500,7 +500,9 @@ vmprint(pagetable_t pagetable) {
       uint64 vpn2 = i;
       pagetable_t pgtbl1 = (pagetable_t)PTE2PA(pte2);
       uint64 va2 = (vpn2 << PXSHIFT(2));
-      printf("..%p: pte %p pa %p\n", (uint64*)va2, (pte_t*)pte2, pgtbl1);
+      if(va2 & (1L << 37))  // 检查第38位
+        va2 |= 0xFFFFFFC000000000;  // 设置63:39位为1
+      printf(" ..%p: pte %p pa %p\n", (uint64*)va2, (pte_t*)pte2, pgtbl1);
 
       for (int j = 0; j <= 511; j++) {
         pte_t pte1 = pgtbl1[j];
@@ -511,16 +513,16 @@ vmprint(pagetable_t pagetable) {
         uint64 vpn1 = j;
         pagetable_t pgtbl0 = (pagetable_t)PTE2PA(pte1);
         uint64 va1 = va2 + (vpn1 << PXSHIFT(1));
-        printf(".. ..%p: pte %p pa %p\n", (uint64*)va1, (pte_t*)pte1, pgtbl0);
+        printf(" .. ..%p: pte %p pa %p\n", (uint64*)va1, (pte_t*)pte1, pgtbl0);
 
         for (int k = 0; k <= 511; k++) {
-          pte_t pte0 = pgtbl1[k];
+          pte_t pte0 = pgtbl0[k];
           if (!(pte0 & PTE_V)) continue;
 
           uint64 vpn0 = k;
           pagetable_t pa = (pagetable_t)PTE2PA(pte0);
           uint64 va0 = va1 + (vpn0 << PXSHIFT(0));
-          printf(".. .. ..%p: pte %p pa %p\n", (uint64*)va0, (pte_t*)pte0, pa);
+          printf(" .. .. ..%p: pte %p pa %p\n", (uint64*)va0, (pte_t*)pte0, pa);
         }
       }
     } else {
