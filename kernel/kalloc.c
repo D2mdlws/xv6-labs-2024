@@ -80,3 +80,15 @@ kalloc(void)
     memset((char*)r, 5, PGSIZE); // fill with junk
   return (void*)r;
 }
+
+void*
+superalloc(void)
+{
+
+}
+
+void*
+superfree(void) 
+{
+
+}
