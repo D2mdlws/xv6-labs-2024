@@ -49,7 +49,8 @@
 
 // map kernel stacks beneath the trampoline,
 // each surrounded by invalid guard pages.
-#define KSTACK(p) (TRAMPOLINE - (p)*2*PGSIZE - 3*PGSIZE)
+#define KSTACK(p) (TRAMPOLINE - (p)*2*PGSIZE - 3*PGSIZE) // (p*2) for each user's process need a kernel stack and a guard
+                                                         // 3 stands for trapframe, guard and kstack0.
 
 // User memory layout.
 // Address zero first:
