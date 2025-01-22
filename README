@@ -1,3 +1,13 @@
+## Note:
+
+for lab3, I only passed the pgtbltest, which can be tested in the shell.
+
+I believe that for the last part of this lab, which is *Use superpages*, there must be some incomplete situations in my codes, and the if statements in some functions are really ugly, but I have tried my best to make it work. Maybe you can see many many debug information in the codes and in the shell, I am sorry for that.
+
+But luckily I find a way not to change the use of the PTE-flags to implemment the superpages. And if you have any questions, please contact me.
+
+# Acknowledgements
+
 xv6 is a re-implementation of Dennis Ritchie's and Ken Thompson's Unix
 Version 6 (v6).  xv6 loosely follows the structure and style of v6,
 but is implemented for a modern RISC-V multiprocessor using ANSI C.

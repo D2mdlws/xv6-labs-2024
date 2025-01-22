@@ -126,6 +126,7 @@ superpg_test()
   
   uint64 s = SUPERPGROUNDUP((uint64) end);
   supercheck(s);
+  printf("debug: parent supercheck passed\n");
   if((pid = fork()) < 0) {
     err("fork");
   } else if(pid == 0) {

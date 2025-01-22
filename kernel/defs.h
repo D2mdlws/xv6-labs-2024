@@ -68,7 +68,7 @@ void*           kalloc(void);
 void            kfree(void *);
 void            kinit(void);
 void*           superalloc(void);
-void*           superfree(void*);
+void            superfree(void*);
 
 // log.c
 void            initlog(int, struct superblock*);
@@ -188,6 +188,8 @@ void            vmprint(pagetable_t);
 #endif
 #ifdef LAB_PGTBL
 pte_t*          pgpte(pagetable_t, uint64);
+pte_t * walksuper(pagetable_t pagetable, uint64 va, int alloc);
+int mapsuperpages(pagetable_t pagetable, uint64 va, uint64 size, uint64 pa, int perm);
 #endif
 
 // plic.c

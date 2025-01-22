@@ -9,8 +9,6 @@
 #include "riscv.h"
 #include "defs.h"
 
-#define SPGSIZE ((512)*PGSIZE)
-
 void freerange(void *pa_start, void *pa_end);
 
 extern char end[]; // first address after kernel.
@@ -43,10 +41,11 @@ freerange(void *pa_start, void *pa_end)
 {
   char *p;
   p = (char*)PGROUNDUP((uint64)pa_start);
-  for(; p + PGSIZE <= (char*)pa_end - 25 * SPGSIZE; p += PGSIZE)  //25 Super Pages maybe enough?
+  for(; p + PGSIZE <= (char*)pa_end - 25 * SUPERPGSIZE; p += PGSIZE)  //25 Super Pages maybe enough?
     kfree(p);
-  p = (char*)SUPERPGROUNDUP((uint64)pa_start);
-  for (; p + SPGSIZE <= (char*)pa_end; p += SPGSIZE)
+  
+  p = (char*)SUPERPGROUNDUP((uint64)p);
+  for (; p + SUPERPGSIZE <= (char*)pa_end; p += SUPERPGSIZE)
     superfree(p);
 }
 
@@ -55,10 +54,10 @@ superfree(void* pa)
 {
   struct run * r;
 
-  if (((uint64)pa % SPGSIZE) != 0 || (char*)pa < end || (uint64)pa >= PHYSTOP)
-    panic("superkfree");
+  if (((uint64)pa % SUPERPGSIZE) != 0 || (char*)pa < end || (uint64)pa >= PHYSTOP)
+    panic("superfree");
 
-  memset(pa, 1, SPGSIZE);
+  memset(pa, 1, SUPERPGSIZE);
 
   r = (struct run*)pa;
 
@@ -122,6 +121,6 @@ superalloc(void)
   release(&superkmem.lock);
 
   if(r)
-    memset((char*)r, 5, SPGSIZE); // fill with junk
+    memset((char*)r, 5, SUPERPGSIZE); // fill with junk
   return (void*)r;
 }
