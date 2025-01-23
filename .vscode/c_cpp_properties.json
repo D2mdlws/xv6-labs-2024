@@ -1,0 +1,52 @@
+{
+    "version": 4,
+    "configurations": [
+        {
+            // 自定义名称，可在 VS Code 里切换
+            "name": "RISC-V Cross Compile",
+
+            // 1. 指定你的 RISC-V 交叉编译器
+            "compilerPath": "/opt/homebrew/bin/riscv64-unknown-elf-gcc",
+
+            // 2. 指定 C/C++ 标准（可按需要改为 gnu17, c99, c++17 等）
+            "cStandard": "gnu17",
+            "cppStandard": "gnu++17",
+
+            // 3. IntelliSense 模式
+            // ms-vscode.cpptools 没有专门的 "gcc-riscv64" 模式，你可用 "gcc-x64" 或 "clang-x64" 兼容即可
+            "intelliSenseMode": "gcc-x64",
+
+            // 4. 头文件搜索路径 (includePath)：
+            //    - 首先让 VS Code 能找到 kernel/、user/ 下的头文件
+            //    - 如果你的交叉编译器自带的 sysroot/include 需要手动添加，也可以在这里补充
+            "includePath": [
+                "${workspaceFolder}/**",
+                // 若需要额外指定交叉编译器的库头位置可继续添加:
+                "/opt/homebrew/Cellar/riscv-gnu-toolchain/main/lib/gcc/riscv64-unknown-elf/14.2.0/include",
+                "/opt/homebrew/Cellar/riscv-gnu-toolchain/main/lib/gcc/riscv64-unknown-elf/14.2.0/include-fixed",
+                "/opt/homebrew/Cellar/riscv-gnu-toolchain/main/lib/gcc/riscv64-unknown-elf/14.2.0/../../../../riscv64-unknown-elf/include"
+                // 或者类似: "/opt/homebrew/lib/gcc/riscv64-unknown-elf/<某版本号>/include"
+            ],
+
+            // 5. Defines: 如果需要自定义一些宏，也可在此添加
+            "defines": [
+                "LAB_COW"
+            ],
+
+            // 6. browse.path: 提供给 VS Code 符号浏览器的索引路径
+            //    一般至少包含项目根目录、kernel、user 等
+            "browse": {
+                "path": [
+                    "${workspaceFolder}",
+                    "${workspaceFolder}/kernel",
+                    "${workspaceFolder}/user",
+                    "/opt/homebrew/Cellar/riscv-gnu-toolchain/main/lib/gcc/riscv64-unknown-elf/14.2.0/include",
+                    "/opt/homebrew/Cellar/riscv-gnu-toolchain/main/lib/gcc/riscv64-unknown-elf/14.2.0/include-fixed",
+                    "/opt/homebrew/Cellar/riscv-gnu-toolchain/main/lib/gcc/riscv64-unknown-elf/14.2.0/../../../../riscv64-unknown-elf/include"
+                    // 如果需要索引交叉编译器的头文件，也可加在这里
+                ],
+                "limitSymbolsToIncludedHeaders": true
+            }
+        }
+    ]
+}

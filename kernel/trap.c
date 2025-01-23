@@ -68,11 +68,70 @@ usertrap(void)
   } else if((which_dev = devintr()) != 0){
     // ok
   } else {
-    printf("usertrap(): unexpected scause 0x%lx pid=%d\n", r_scause(), p->pid);
-    printf("            sepc=0x%lx stval=0x%lx\n", r_sepc(), r_stval());
-    setkilled(p);
+    // write page fault
+    if (r_scause() == 15) {
+      // printf("debug: COW start in usertrap\n");
+      uint64 va = r_stval();
+      if (va >= MAXVA) {
+        printf("usertrap(): p->pid=%d %s: unexpected page fault va=0x%lx\n",
+               p->pid, p->name, va);
+        printf("            sepc=0x%lx stval=0x%lx\n", r_sepc(), va);
+        setkilled(p);
+        goto err;
+      }
+      pte_t *pte;
+      if ((pte = walk(p->pagetable, va, 0)) == 0) {
+        printf("COW failed when walk user pagetable\nusertrap(): p->pid=%d %s: unexpected page fault va=0x%lx\n",
+               p->pid, p->name, va);
+        printf("            sepc=0x%lx stval=0x%lx\n", r_sepc(), va);
+        setkilled(p);
+        goto err;
+      }
+      uint flags = PTE_FLAGS(*pte);
+      // if the page is not COW, kill the process
+      if (!((flags & PTE_COW) != 0 && (flags & PTE_W) == 0)) {
+        printf("COW failed when check pte flags\nusertrap(): p->pid=%d %s: unexpected page fault va=0x%lx\n",
+               p->pid, p->name, va);
+        printf("            sepc=0x%lx stval=0x%lx\n", r_sepc(), va);
+        setkilled(p);
+        goto err;
+      }
+
+      // copy the page
+      uint64 pa = PTE2PA(*pte);
+      char *mem;
+      // if no free page, kill the process
+      if ((mem = kalloc()) == 0) {
+        printf("COW failed when kalloc\nusertrap(): p->pid=%d %s: unexpected page fault va=0x%lx\n",
+               p->pid, p->name, va);
+        printf("            sepc=0x%lx stval=0x%lx\n", r_sepc(), va);
+        setkilled(p);
+        goto err;
+      }
+      // copy the content of the old page to the new page
+      memmove(mem, (char *)pa, PGSIZE);
+      // map the new page to the user space
+      if (mapcow(p->pagetable, PGROUNDDOWN(va), (uint64)mem, ((flags | PTE_W) & ~PTE_COW)) != 0) {
+        printf("COW failed when map new pages\nusertrap(): p->pid=%d %s: unexpected page fault va=0x%lx\n",
+               p->pid, p->name, va);
+        printf("            sepc=0x%lx stval=0x%lx\n", r_sepc(), va);
+        kfree(mem);
+        setkilled(p);
+        goto err;
+      }
+      // decrease the ref count of the old page
+      kfree((void *)pa);
+
+      // printf("debug: COW finish in usertrap\n");
+    }
+    else{
+      printf("usertrap(): unexpected scause 0x%lx pid=%d\n", r_scause(), p->pid);
+      printf("            sepc=0x%lx stval=0x%lx\n", r_sepc(), r_stval());
+      setkilled(p);
+    } 
   }
 
+err:
   if(killed(p))
     exit(-1);
 

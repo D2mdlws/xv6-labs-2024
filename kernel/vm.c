@@ -15,6 +15,8 @@ extern char etext[];  // kernel.ld sets this to end of kernel code.
 
 extern char trampoline[]; // trampoline.S
 
+
+
 // Make a direct-map page table for the kernel.
 pagetable_t
 kvmmake(void)
@@ -315,7 +317,7 @@ uvmcopy(pagetable_t old, pagetable_t new, uint64 sz)
   pte_t *pte;
   uint64 pa, i;
   uint flags;
-  char *mem;
+  // char *mem;
 
   for(i = 0; i < sz; i += PGSIZE){
     if((pte = walk(old, i, 0)) == 0)
@@ -324,11 +326,25 @@ uvmcopy(pagetable_t old, pagetable_t new, uint64 sz)
       panic("uvmcopy: page not present");
     pa = PTE2PA(*pte);
     flags = PTE_FLAGS(*pte);
-    if((mem = kalloc()) == 0)
-      goto err;
-    memmove(mem, (char*)pa, PGSIZE);
-    if(mappages(new, i, PGSIZE, (uint64)mem, flags) != 0){
-      kfree(mem);
+    // if((mem = kalloc()) == 0)
+    //   goto err;
+    // memmove(mem, (char*)pa, PGSIZE);
+    // if(mappages(new, i, PGSIZE, (uint64)mem, flags) != 0){
+    //   kfree(mem);
+    //   goto err;
+    // }
+
+    // reference the same page, ref ++
+    getpage((void*)pa);
+    // modify parent's pte's flags
+    uint child_flags = flags;
+    if (flags & PTE_W) {
+      child_flags = ((flags & ~PTE_W) | PTE_COW);
+      *pte &= ~PTE_W;
+      *pte |= PTE_COW;
+    }
+    if(mappages(new, i, PGSIZE, pa, child_flags) != 0){
+      kfree((void *)pa); // ref count--
       goto err;
     }
   }
@@ -366,9 +382,25 @@ copyout(pagetable_t pagetable, uint64 dstva, char *src, uint64 len)
     if(va0 >= MAXVA)
       return -1;
     pte = walk(pagetable, va0, 0);
-    if(pte == 0 || (*pte & PTE_V) == 0 || (*pte & PTE_U) == 0 ||
-       (*pte & PTE_W) == 0)
+    if(pte == 0 || (*pte & PTE_V) == 0 || (*pte & PTE_U) == 0 || ((*pte & PTE_W) == 0 && (*pte & PTE_COW) == 0))
       return -1;
+    // if the page is COW, copy the page
+    if ((*pte & PTE_COW) != 0 && (*pte & PTE_W) == 0) {
+      uint64 pa = PTE2PA(*pte);
+      char* mem;
+      if ((mem = kalloc()) == 0) {
+        return -1;
+      }
+      memmove(mem, (char *)pa, PGSIZE);
+      uint flags = PTE_FLAGS(*pte);
+      if (mapcow(pagetable, va0, (uint64)mem, ((flags | PTE_W) & ~PTE_COW)) != 0) {
+        kfree(mem);
+        return -1;
+      }
+      kfree((void *)pa);
+    }
+    // make sure the pte get the new pa
+    pte = walk(pagetable, va0, 0);
     pa0 = PTE2PA(*pte);
     n = PGSIZE - (dstva - va0);
     if(n > len)
@@ -448,4 +480,27 @@ copyinstr(pagetable_t pagetable, char *dst, uint64 srcva, uint64 max)
   } else {
     return -1;
   }
+}
+
+int
+mapcow(pagetable_t pagetable, uint64 va, uint64 pa, int perm)
+{
+  uint64 a;
+
+  if((va % PGSIZE) != 0)
+    panic("mapcow: va not aligned");
+
+  a = va;
+  pte_t pmd = 0;
+  pte_t pte = 0;
+  pmd = pagetable[PX(2, a)];
+  if (!(pmd & PTE_V)) {
+    panic("mapcow: pmd not present");
+  }
+  pte = ((uint64*)(PTE2PA(pmd)))[PX(1, a)];
+  if (!(pte & PTE_V)) {
+    panic("mapcow: pte not present");
+  }
+  ((uint64*)(PTE2PA(pte)))[PX(0, a)] = PA2PTE(pa) | perm | PTE_V;
+  return 0;
 }

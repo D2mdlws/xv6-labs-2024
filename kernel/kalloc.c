@@ -23,10 +23,16 @@ struct {
   struct run *freelist;
 } kmem;
 
+struct {
+  struct spinlock lock;
+  int _ref[PHYSTOP / PGSIZE];
+}ref;
+
 void
 kinit()
 {
   initlock(&kmem.lock, "kmem");
+  initlock(&ref.lock, "ref");
   freerange(end, (void*)PHYSTOP);
 }
 
@@ -50,6 +56,17 @@ kfree(void *pa)
 
   if(((uint64)pa % PGSIZE) != 0 || (char*)pa < end || (uint64)pa >= PHYSTOP)
     panic("kfree");
+
+  acquire(&ref.lock);
+  if (ref._ref[REFIDX(pa)] > 0) {
+    ref._ref[REFIDX(pa)]--;
+  }
+  if (ref._ref[REFIDX(pa)] > 0) {
+    release(&ref.lock);
+    return;
+  } else {
+    release(&ref.lock);
+  }
 
   // Fill with junk to catch dangling refs.
   memset(pa, 1, PGSIZE);
@@ -76,7 +93,27 @@ kalloc(void)
     kmem.freelist = r->next;
   release(&kmem.lock);
 
+  if(r){
+    acquire(&ref.lock);
+    ref._ref[REFIDX(r)] = 1;
+    release(&ref.lock);
+  }
+
   if(r)
     memset((char*)r, 5, PGSIZE); // fill with junk
   return (void*)r;
+}
+
+// only use for fork() to share the page
+int
+getpage(void *pa)
+{
+  acquire(&ref.lock);
+  if (ref._ref[REFIDX(pa)] == 0) {
+    release(&ref.lock);
+    panic("getpage: the page is not allocated");
+  }
+  ref._ref[REFIDX(pa)]++;
+  release(&ref.lock);
+  return 0;
 }
