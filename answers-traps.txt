@@ -1,0 +1,6 @@
+1. a2 holds 13
+2. inline, so a1 reg holds f(g(8)) + 1
+3. 00000000000006e2
+4. 3c
+5. HE110 World 0x726c6400 no need to change 57616
+6. print the value of a2 reg, for a2 is the third value passed to the function
