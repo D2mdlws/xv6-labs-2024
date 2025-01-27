@@ -102,7 +102,25 @@ e1000_transmit(char *buf, int len)
   // a pointer so that it can be freed after send completes.
   //
 
+  acquire(&e1000_lock);
+  int tx_index = regs[E1000_TDT];
+  if (!(tx_ring[tx_index].status & E1000_TXD_STAT_DD)) {
+    release(&e1000_lock);
+    return -1;
+  }
+
+  // use kfree() to free the last buffer that was transmitted from that descriptor (if there was one)
+  if (tx_bufs[tx_index])
+    kfree(tx_bufs[tx_index]);
   
+  tx_bufs[tx_index] = buf;
+  tx_ring[tx_index].addr = (uint64) buf;
+  tx_ring[tx_index].length = len;
+  tx_ring[tx_index].cmd = E1000_TXD_CMD_RS | E1000_TXD_CMD_EOP;
+  tx_ring[tx_index].status  = 0;
+  regs[E1000_TDT] = (tx_index + 1) % TX_RING_SIZE;
+  release(&e1000_lock);
+
   return 0;
 }
 
@@ -115,7 +133,31 @@ e1000_recv(void)
   // Check for packets that have arrived from the e1000
   // Create and deliver a buf for each packet (using net_rx()).
   //
+  while(1) {
+    int rx_tail = (regs[E1000_RDT] + 1) % RX_RING_SIZE;
+    int rx_head = regs[E1000_RDH];
 
+    // check if the buffer is full
+    if(rx_tail == rx_head)
+      return;
+    if(!(rx_ring[rx_tail].status & E1000_RXD_STAT_DD))
+      return;
+    if(rx_ring[rx_tail].errors) {
+      printf("e1000: rx error\n");
+      return;
+    }
+
+    if(rx_ring[rx_tail].status & E1000_RXD_STAT_EOP) {
+      net_rx(rx_bufs[rx_tail], rx_ring[rx_tail].length);
+      rx_bufs[rx_tail] = kalloc();
+      if(!rx_bufs[rx_tail])
+        panic("e1000");
+      rx_ring[rx_tail].addr = (uint64)rx_bufs[rx_tail];
+      rx_ring[rx_tail].status = 0;
+    }
+
+    regs[E1000_RDT] = rx_tail;
+  }
 }
 
 void
