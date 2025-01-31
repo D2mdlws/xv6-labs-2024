@@ -112,30 +112,56 @@ bget(uint dev, uint blockno)
     if (i == bucket) {
       continue;
     }
+    release(&bcache.buckets[bucket].lock);
+
     acquire(&bcache.buckets[i].lock);
+    struct buf* freeb;
     for(b = bcache.buckets[i].head.next; b != &bcache.buckets[i].head; b = b->next){
       if(b->refcnt == 0) {
         b->next->prev = b->prev;
         b->prev->next = b->next;
-
-        release(&bcache.buckets[i].lock);
-
-        b->dev = dev;
-        b->blockno = blockno;
-        b->valid = 0;
-        b->refcnt = 1;
-
-        b->next = bcache.buckets[bucket].head.next;
-        b->prev = &bcache.buckets[bucket].head;
-        bcache.buckets[bucket].head.next->prev = b;
-        bcache.buckets[bucket].head.next = b;
-
-        release(&bcache.buckets[bucket].lock);
-        acquiresleep(&b->lock);
-        return b;
+        freeb = b;
+        break;
       }
     }
-    release(&bcache.buckets[i].lock); // i_th bucket has no free buffer, search next bucket
+    release(&bcache.buckets[i].lock);
+    // here, there might be other threads that are trying to insert a buffer into the same bucket.
+    acquire(&bcache.buckets[bucket].lock);
+    if (!freeb) {
+      continue;
+    }
+
+    // check whether other processes have already cached the block
+    for (struct buf* x = bcache.buckets[bucket].head.next; x != &bcache.buckets[bucket].head; x = x->next) {
+      if (x->dev == dev && x->blockno == blockno) {
+        // simply move the evicted buffer to the head of the origin bucket list
+        acquire(&bcache.buckets[i].lock);
+        freeb->next = bcache.buckets[i].head.next;
+        freeb->prev = &bcache.buckets[i].head;
+        bcache.buckets[i].head.next->prev = freeb;
+        bcache.buckets[i].head.next = freeb;
+        release(&bcache.buckets[i].lock);
+
+        x->refcnt ++;
+        release(&bcache.buckets[bucket].lock);
+        acquiresleep(&x->lock);
+        return x;
+      }
+    }
+
+    freeb->dev = dev;
+    freeb->blockno = blockno;
+    freeb->valid = 0;
+    freeb->refcnt = 1;
+
+    freeb->next = bcache.buckets[bucket].head.next;
+    freeb->prev = &bcache.buckets[bucket].head;
+    bcache.buckets[bucket].head.next->prev = freeb;
+    bcache.buckets[bucket].head.next = freeb;
+
+    release(&bcache.buckets[bucket].lock);
+    acquiresleep(&freeb->lock);
+    return freeb;
   }
   release(&bcache.buckets[bucket].lock);
   panic("bget: no buffers");
