@@ -557,7 +557,7 @@ sleep(void *chan, struct spinlock *lk)
   // so it's okay to release lk.
 
   acquire(&p->lock);  //DOC: sleeplock1
-  release(lk);
+  release(lk);        // lk is a spinlock to protect sleeplock's state, should be hold for a very short time.
 
   // Go to sleep.
   p->chan = chan;

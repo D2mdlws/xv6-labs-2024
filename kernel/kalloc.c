@@ -18,15 +18,21 @@ struct run {
   struct run *next;
 };
 
-struct {
+struct kmem{
   struct spinlock lock;
   struct run *freelist;
-} kmem;
+};
+
+struct kmem kmemcpu[NCPU];
 
 void
 kinit()
 {
-  initlock(&kmem.lock, "kmem");
+  char lockname[32];
+  for (int i = 0; i < NCPU; i++) {
+    snprintf(lockname, sizeof(lockname), "kmemcpu%d", i);
+    initlock(&kmemcpu[i].lock, lockname);
+  }
   freerange(end, (void*)PHYSTOP);
 }
 
@@ -34,9 +40,16 @@ void
 freerange(void *pa_start, void *pa_end)
 {
   char *p;
+  int cpu = 0;
   p = (char*)PGROUNDUP((uint64)pa_start);
-  for(; p + PGSIZE <= (char*)pa_end; p += PGSIZE)
-    kfree(p);
+  for(; p + PGSIZE <= (char*)pa_end; p += PGSIZE) {
+    struct run *r = (struct run*)p;
+    acquire(&kmemcpu[cpu].lock);
+    r->next = kmemcpu[cpu].freelist;
+    kmemcpu[cpu].freelist = r;
+    release(&kmemcpu[cpu].lock);
+    cpu = (cpu + 1) % NCPU;
+  }
 }
 
 // Free the page of physical memory pointed at by pa,
@@ -56,10 +69,13 @@ kfree(void *pa)
 
   r = (struct run*)pa;
 
-  acquire(&kmem.lock);
-  r->next = kmem.freelist;
-  kmem.freelist = r;
-  release(&kmem.lock);
+  push_off();
+  int cpu = cpuid();
+  acquire(&kmemcpu[cpu].lock);
+  r->next = kmemcpu[cpu].freelist;
+  kmemcpu[cpu].freelist = r;
+  release(&kmemcpu[cpu].lock);
+  pop_off();
 }
 
 // Allocate one 4096-byte page of physical memory.
@@ -70,13 +86,33 @@ kalloc(void)
 {
   struct run *r;
 
-  acquire(&kmem.lock);
-  r = kmem.freelist;
-  if(r)
-    kmem.freelist = r->next;
-  release(&kmem.lock);
+  push_off();
+  int cpu = cpuid();
+  acquire(&kmemcpu[cpu].lock);
+  r = kmemcpu[cpu].freelist;
+  if(r) {
+    kmemcpu[cpu].freelist = r->next;
+    release(&kmemcpu[cpu].lock);
+    goto memclear;
+  } else {
+    release(&kmemcpu[cpu].lock);
+    for (int i = 0; i < NCPU; i++) {
+      if (i == cpu) 
+        continue;
+      acquire(&kmemcpu[i].lock);
+      r = kmemcpu[i].freelist;
+      if(r) {
+        kmemcpu[i].freelist = r->next;
+        release(&kmemcpu[i].lock);
+        goto memclear;
+      }
+      release(&kmemcpu[i].lock); // i's cpu has no free pages, search next
+    }
+  }
 
-  if(r)
-    memset((char*)r, 5, PGSIZE); // fill with junk
+memclear:
+  pop_off();
+  if (r) 
+    memset((char*)r, 5, PGSIZE);
   return (void*)r;
 }
